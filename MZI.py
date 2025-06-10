@@ -6,7 +6,9 @@ import os
 class MZI_sw:
     def __init__(self, component, wg_w=0.5, arm_l=50, arm_dl=15, layer_wg=(1,0),
                  heater_w=3, layer_heater=(11,0), layer_electrical=(12,0),
-                 bend_r=8, mmi_l=5, mmi_w=5, mmi_gap=2, mmi_taper_l=2):
+                 bend_r=8, mmi_l=5, mmi_w=5, mmi_gap=2, mmi_taper_l=2,
+                 num_pads=10, pad_size=76, pad_tolerance=2, pad_spacing=100, pad_clearance=800, 
+                 ):
         
         self.component = component
         self.wg_w = wg_w
@@ -22,6 +24,14 @@ class MZI_sw:
         self.mmi_gap = mmi_gap
         self.mmi_taper_l = mmi_taper_l
         self.instance = 1
+
+
+        self.num_pads = num_pads
+        self.pad_size = pad_size
+        self.pad_tolerance = pad_tolerance
+        self.pad_spacing = pad_spacing
+        self.pad_clearance = pad_clearance
+
 
     def create_structure(self,pos=(0,0)):
         self.pos=pos
@@ -53,7 +63,15 @@ class MZI_sw:
         contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.arm_l+self.wg_w-self.heater_w+self.pos[0],self.mmi_gap+2*self.bend_r+self.pos[1]))
         self.component.add_port(name=f"e_{self.instance}_2",port=contact["e2"])
 
+    def add_pads(self):
+        pad_array_in = self.component << gf.components.pad_array("pad", columns=self.num_pads, column_pitch=self.pad_spacing, port_orientation=270, size=(self.pad_size, self.pad_size), centered_ports=False)
+        pad_array_ex = self.component << gf.components.pad_array("pad", columns=self.num_pads, column_pitch=self.pad_spacing, port_orientation=270, size=(self.pad_size + 2 * self.pad_tolerance, self.pad_size + 2 * self.pad_tolerance), centered_ports=False)
 
+        for pad_array in (pad_array_in, pad_array_ex):
+            pad_array.movex(-self.num_pads / 2 * self.pad_spacing + self.pad_size / 2 )
+            pad_array.movey(self.pad_clearance)
+        return pad_array_ex
+    
     def add_grating_coupler(self, pos=[[0,140],[1400,140]], fiberarray_spacing=100, fiberarray_clearance=50):
 
         gdspath = os.path.join(os.getcwd(), "ANT_GC.GDS")
@@ -169,6 +187,8 @@ MZI.create_structure(pos=(x_spacing,2*y_spacing))
 MZI.add_grating_coupler()
 
 MZI.interconnect_custom()
+
+MZI.add_pads()
 
 master_component.pprint_ports()
 master_component.draw_ports()
