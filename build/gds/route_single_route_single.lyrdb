@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<report-database>
+ <description/>
+ <original-file/>
+ <generator/>
+ <top-cell/>
+ <tags>
+ </tags>
+ <categories>
+  <category>
+   <name>o_4_1 - o_1_4</name>
+   <description/>
+   <categories>
+   </categories>
+  </category>
+ </categories>
+ <cells>
+  <cell>
+   <name>Neuromorphic_Chip</name>
+   <variant/>
+   <layout-name/>
+   <references>
+   </references>
+  </cell>
+ </cells>
+ <items>
+  <item>
+   <tags/>
+   <category>'o_4_1 - o_1_4'</category>
+   <cell>Neuromorphic_Chip</cell>
+   <visited>false</visited>
+   <multiplicity>1</multiplicity>
+   <comment/>
+   <image/>
+   <values>
+    <value>text: 'Error while trying to place route from o_4_1 to o_1_4 at points (dbu): [295000,1500, 200000,0, 108000,-1500]'</value>
+    <value>text: 'Exception: Non-manhattan vectors are not supported'</value>
+    <value>polygon: (108.004,-1.75;107.996,-1.25;199.996,0.25;294.996,1.75;295.004,1.25;200.004,-0.25)</value>
+   </values>
+  </item>
+ </items>
+</report-database>
