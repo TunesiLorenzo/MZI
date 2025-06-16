@@ -6,7 +6,7 @@ import os
 class MZI_sw:
     def __init__(self, component, wg_w=0.5, arm_l=50, arm_dl=15, layer_wg=(1,0),
                  heater_w=3, layer_heater=(11,0), layer_electrical=(12,0),
-                 bend_r=8, mmi_l=5, mmi_w=5, mmi_gap=2, mmi_taper_l=2,
+                 bend_r=8, mmi_l=5, mmi_w=5, mmi_gap=2, mmi_taper_l=2, mmi_taper_w=1.53,
                  num_pads=10, pad_size=76, pad_tolerance=2, pad_spacing=100, pad_clearance=800, 
                  ):
         
@@ -23,6 +23,7 @@ class MZI_sw:
         self.mmi_w = mmi_w
         self.mmi_gap = mmi_gap
         self.mmi_taper_l = mmi_taper_l
+        self.mmi_taper_w = mmi_taper_w
         self.instance = 1
 
 
@@ -44,7 +45,7 @@ class MZI_sw:
         xs_metal = gf.cross_section.heater_metal(width=self.heater_w, layer=self.layer_heater)
         mzi = self.component << gf.components.mzis.mzi2x2_2x2_phase_shifter(length_x=self.arm_l, delta_length=self.arm_dl,
                                                                        straight_x_top=gf.components.straight_heater_metal(length=self.arm_l, cross_section_heater=xs_metal, via_stack=None),
-                                                                       splitter=gf.components.mmis.mmi2x2(width_mmi=self.mmi_w,gap_mmi=self.mmi_gap,length_taper=self.mmi_taper_l,length_mmi=self.mmi_l),
+                                                                       splitter=gf.components.mmis.mmi2x2(width_mmi=self.mmi_w,gap_mmi=self.mmi_gap,length_taper=self.mmi_taper_l,length_mmi=self.mmi_l,width_taper=self.mmi_taper_w),
                                                                        combiner=gf.components.mmis.mmi2x2(width_mmi=self.mmi_w,gap_mmi=self.mmi_gap,length_taper=self.mmi_taper_l,length_mmi=self.mmi_l),
                                                                        bend=gf.components.bends.bend_euler(radius=self.bend_r))
         mzi.move(origin=(0,0),destination=self.pos)
@@ -55,24 +56,27 @@ class MZI_sw:
 
 
     def route_electrical(self):      
-        contact = self.component << gf.components.rectangle(size=(self.heater_w,self.heater_w), layer=(12,1))
-        contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.wg_w+self.pos[0],self.mmi_gap+2*self.bend_r+self.pos[1]))
+        contact = self.component << gf.components.rectangle(size=(self.heater_w,self.heater_w), layer=(12,0))
+        contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.pos[0],
+                                                self.mmi_gap/2+self.mmi_taper_w/2+2*self.bend_r+self.pos[1]+2-self.heater_w/2))
+        
         self.component.add_port(name=f"e_{self.instance}_1",port=contact["e2"])
 
-        contact = self.component << gf.components.rectangle(size=(self.heater_w,self.heater_w), layer=(12,1))
-        contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.arm_l+self.wg_w-self.heater_w+self.pos[0],self.mmi_gap+2*self.bend_r+self.pos[1]))
+        contact = self.component << gf.components.rectangle(size=(self.heater_w,self.heater_w), layer=(12,0))
+        contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.arm_l-self.heater_w+self.pos[0],
+                                                self.mmi_gap/2+self.mmi_taper_w/2+2*self.bend_r+self.pos[1]+2-self.heater_w/2))
         self.component.add_port(name=f"e_{self.instance}_2",port=contact["e2"])
 
     def add_pads(self):
-        pad_array_in = self.component << gf.components.pad_array("pad", columns=self.num_pads, column_pitch=self.pad_spacing, port_orientation=270, size=(self.pad_size, self.pad_size), centered_ports=False)
-        pad_array_ex = self.component << gf.components.pad_array("pad", columns=self.num_pads, column_pitch=self.pad_spacing, port_orientation=270, size=(self.pad_size + 2 * self.pad_tolerance, self.pad_size + 2 * self.pad_tolerance), centered_ports=False)
+        pad_array_in = self.component << gf.components.pad_array("pad", columns=self.num_pads, column_pitch=self.pad_spacing, port_orientation=270, size=(self.pad_size, self.pad_size), centered_ports=False, layer=(13,0))
+        pad_array_ex = self.component << gf.components.pad_array("pad", columns=self.num_pads, column_pitch=self.pad_spacing, port_orientation=270, size=(self.pad_size + 2 * self.pad_tolerance, self.pad_size + 2 * self.pad_tolerance), layer=(12,0), centered_ports=False)
 
         for pad_array in (pad_array_in, pad_array_ex):
-            pad_array.movex(-self.num_pads / 2 * self.pad_spacing + self.pad_size / 2 )
+            pad_array.movex(-self.num_pads / 2 * self.pad_spacing + self.pad_size / 2 + 680)
             pad_array.movey(self.pad_clearance)
         return pad_array_ex
     
-    def add_grating_coupler(self, pos=[[0,140],[1400,140]], fiberarray_spacing=100, fiberarray_clearance=50):
+    def add_grating_coupler(self, pos=[[0,140],[1400,140]], fiberarray_spacing=127, fiberarray_clearance=100):
 
         gdspath = os.path.join(os.getcwd(), "ANT_GC.GDS")
         antgc = gf.read.import_gds(gdspath)
@@ -88,20 +92,40 @@ class MZI_sw:
             orientation=270,
             cross_section=my_route_s
             )
+        
+        flag_type = 1 
 
-        grating_number = 3
-        for idx in range(2):
+        if flag_type==0:
+            grating_number = 3
+            for idx in range(2):
+                for i in range(grating_number):
+                    antgc_ref = self.component << antgc.copy()
+                    
+                    antgc_ref.dmove(   # con dmove puoi spostare nel punto desiderato al posto che move "relativo"
+                    origin=(antgc_ref.x, antgc_ref.y), # .x e .y ritornano il centro del componente
+                    destination=(pos[idx][0]+((2*idx-1)*fiberarray_clearance),
+                                 pos[idx][1]-(fiberarray_spacing*i)))
+                    antgc_ref.drotate(angle=90+(idx*180), center=antgc_ref.center)
+
+                    shadow_rect = self.component << gf.components.rectangle(size=(self.wg_w, self.wg_w), layer=self.layer_wg, port_type="optical") # needed because add port is broken as of 9.7.0
+                    shadow_rect.connect("o3", antgc_ref["o1"]),
+                    self.component.add_port(f"Grating{idx}_{i}", port=shadow_rect["o1"])
+        else:
+            grating_number = 8
+            idx = 0
             for i in range(grating_number):
                 antgc_ref = self.component << antgc.copy()
                 
                 antgc_ref.dmove(   # con dmove puoi spostare nel punto desiderato al posto che move "relativo"
                 origin=(antgc_ref.x, antgc_ref.y), # .x e .y ritornano il centro del componente
-                destination=(pos[idx][0]+((2*idx-1)*fiberarray_clearance),pos[idx][1]-(70*i)))
+                destination=(pos[idx][0]+((2*idx-1)*fiberarray_clearance),
+                             pos[idx][1]-(fiberarray_spacing*(i-1))))
                 antgc_ref.drotate(angle=90+(idx*180), center=antgc_ref.center)
 
                 shadow_rect = self.component << gf.components.rectangle(size=(0.5, 0.5), layer=self.layer_wg, port_type="optical") # needed because add port is broken as of 9.7.0
                 shadow_rect.connect("o3", antgc_ref["o1"]),
                 self.component.add_port(f"Grating{idx}_{i}", port=shadow_rect["o1"])
+
 
     
 
@@ -148,21 +172,37 @@ class MZI_sw:
         
         gf.routing.route_bundle_sbend(component=self.component,
             ports2=[self.component["o_3_1"],self.component["o_2_1"],self.component["o_1_2"]],
-            ports1=[self.component["Grating0_0"],self.component["Grating0_1"],self.component["Grating0_2"]],
+            ports1=[self.component["Grating0_1"],self.component["Grating0_2"],self.component["Grating0_3"]],
             cross_section=my_route_s)
         
-        gf.routing.route_bundle_sbend(component=self.component,
+        gf.routing.route_bundle(component=self.component,
             ports2=[self.component["o_7_4"],self.component["o_8_3"],self.component["o_9_3"]],
-            ports1=[self.component["Grating1_2"],self.component["Grating1_1"],self.component["Grating1_0"]],
+            #ports1=[self.component["Grating1_2"],self.component["Grating1_1"],self.component["Grating1_0"]],
+            ports1=[self.component["Grating0_4"],self.component["Grating0_5"],self.component["Grating0_6"]],
             cross_section=my_route_s)
+        
+        bend1 = self.component << gf.components.bend_circular(radius = 15, angle = 180)
+        bend1.connect("o1",self.component["Grating0_0"])
+        straight1 = self.component << gf.components.straight(length=50,cross_section=my_route_s)
+        straight1.connect("o1",bend1["o2"])
+
+        bend2 = self.component << gf.components.bend_circular(radius = 15, angle = -180)
+        bend2.connect("o1",self.component["Grating0_7"])
+        straight2 = self.component << gf.components.straight(length=50,cross_section=my_route_s)
+        straight2.connect("o1",bend2["o2"])
+
+        gf.routing.route_single(component=self.component, port1=straight1["o2"], port2=straight2["o2"], cross_section=my_route_s)
+
 
 master_component=gf.Component("Neuromorphic_Chip")
 MZI = MZI_sw(
     component=master_component,
+    wg_w=0.5,
     arm_l=150,
-    mmi_l=45,
-    mmi_w=6,
-    mmi_gap=1.5,
+    mmi_l=43.5,
+    mmi_w=6.03,
+    mmi_gap=0.47,
+    mmi_taper_l=10,
     arm_dl=0,
 )
 
@@ -170,6 +210,7 @@ device_l=220
 
 x_spacing = 0
 y_spacing = 70
+
 MZI.create_structure(pos=(x_spacing,0))
 MZI.create_structure(pos=(x_spacing,y_spacing))
 MZI.create_structure(pos=(x_spacing,2*y_spacing))
@@ -189,6 +230,8 @@ MZI.add_grating_coupler()
 MZI.interconnect_custom()
 
 MZI.add_pads()
+
+
 
 master_component.pprint_ports()
 master_component.draw_ports()
