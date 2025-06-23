@@ -8,7 +8,8 @@ class MZI_sw:
                  heater_w=3, layer_heater=(11,0), layer_electrical=(12,0),
                  bend_r=8, mmi_l=5, mmi_w=5, mmi_gap=2, mmi_taper_l=2, mmi_taper_w=1.53,
                  num_pads=10, pad_size=76, pad_tolerance=2, pad_spacing=100, pad_clearance=800, 
-                 grating_number=8, fiberarray_spacing=127, fiberarray_clearance=100
+                 grating_number=8, fiberarray_spacing=127, fiberarray_clearance=100,
+                 thermal_trench=True, length_y=15
                  ):
         
         self.component = component
@@ -37,6 +38,9 @@ class MZI_sw:
         self.grating_number=grating_number
         self.fiberarray_spacing=fiberarray_spacing
         self.fiberarray_clearance=fiberarray_clearance
+        
+        self.thermal_trench = thermal_trench
+        self.length_y = length_y
 
     def create_structure(self,pos=(0,0)):
         self.pos=pos
@@ -51,14 +55,17 @@ class MZI_sw:
         xs_silicon = gf.cross_section.strip(width=self.wg_w, layer=self.layer_wg)
         xs_strip_metal = gf.cross_section.strip_heater_metal(width=self.wg_w, layer=self.layer_wg,heater_width=self.heater_w,layer_heater=self.layer_heater)
 
-        mzi = self.component << gf.components.mzis.mzi2x2_2x2_phase_shifter(length_x=self.arm_l, delta_length=self.arm_dl, cross_section=xs_silicon,
-                                                                       straight_x_top=gf.components.straight_heater_metal_simple(length=self.arm_l,
+        mzi = self.component << gf.components.mzis.mzi2x2_2x2_phase_shifter(length_x=self.arm_l, delta_length=self.arm_dl, cross_section=xs_silicon, length_y=self.length_y,
+                                                                       straight_x_top=gf.components.straight_heater_metal_simple(length=self.arm_l, 
                                                                                                                           cross_section_waveguide_heater=xs_strip_metal,
                                                                                                                           cross_section_heater=xs_metal, 
                                                                                                                           via_stack=None),
                                                                        splitter=gf.components.mmis.mmi2x2(width=self.wg_w,width_mmi=self.mmi_w,gap_mmi=self.mmi_gap,length_taper=self.mmi_taper_l,length_mmi=self.mmi_l,width_taper=self.mmi_taper_w),
                                                                        combiner=gf.components.mmis.mmi2x2(width=self.wg_w,width_mmi=self.mmi_w,gap_mmi=self.mmi_gap,length_taper=self.mmi_taper_l,length_mmi=self.mmi_l),
                                                                        bend=gf.components.bends.bend_euler(width=self.wg_w,radius=self.bend_r))
+        if self.thermal_trench:
+            thermal_t = self.component << gf.components.rectangle(size=(self.arm_l-20,20),layer=(203,0))
+            thermal_t.move(origin=(0,0),destination=(self.pos[0]+self.mmi_l+self.mmi_taper_l+2*self.bend_r+10,self.pos[1]-12))
         mzi.move(origin=(0,0),destination=self.pos)
         self.component.add_port(name=f"o_{self.instance}_1",port=mzi["o2"])
         self.component.add_port(name=f"o_{self.instance}_2",port=mzi["o1"])
@@ -67,16 +74,16 @@ class MZI_sw:
 
 
     def route_electrical(self):      
-        contact = self.component << gf.components.rectangle(size=(self.heater_w,self.heater_w), layer=(12,0))
+        contact = self.component << gf.components.rectangle(size=(10,15), layer=(12,0))
         contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.pos[0],
-                                                self.mmi_gap/2+self.mmi_taper_w/2+2*self.bend_r+self.pos[1]+2-self.heater_w/2))
+                                                self.mmi_gap/2+self.mmi_taper_w/2+2*self.bend_r+self.pos[1]+self.length_y-15/2))
         
         self.component.add_port(name=f"e_{self.instance}_1",port=contact["e1"])
 
-        contact = self.component << gf.components.rectangle(size=(self.heater_w,self.heater_w), layer=(12,0))
-        contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.arm_l-self.heater_w+self.pos[0],
-                                                self.mmi_gap/2+self.mmi_taper_w/2+2*self.bend_r+self.pos[1]+2-self.heater_w/2))
-        self.component.add_port(name=f"e_{self.instance}_2",port=contact["e4"])
+        contact = self.component << gf.components.rectangle(size=(10,15), layer=(12,0))
+        contact.dmove(origin=(0,0),destination=(self.mmi_l+2*self.bend_r+self.mmi_taper_l+self.arm_l-10+self.pos[0],
+                                                self.mmi_gap/2+self.mmi_taper_w/2+2*self.bend_r+self.pos[1]+self.length_y-15/2))
+        self.component.add_port(name=f"e_{self.instance}_2",port=contact["e3"])
 
     def add_pads(self):
         pad_array_in = self.component << gf.components.pad_array("pad", columns=self.num_pads, column_pitch=self.pad_spacing, port_orientation=270, size=(self.pad_size, self.pad_size), centered_ports=False, layer=(13,0))
@@ -136,7 +143,7 @@ class MZI_sw:
         )
 
         my_route_e = gf.cross_section.metal_routing(
-            width=5,
+            width=15,
             layer=(12,0),
         )
 
@@ -202,29 +209,25 @@ class MZI_sw:
 
         ports1=[]
         ports2=[]
+        portsP=[]
         for i in range(9):
             ports1.append(self.component[f"e_{i+1}_1"])
-            ports2.append(self.component[f"Pad_{i}"])
-    
-        # gf.routing.route_bundle(component=self.component,
-        #                                    ports1=ports1[0:3],
-        #                                    ports2=ports2[0:3],
-        #                                    cross_section=my_route_e,
-        #                                    separation=10)
-        
-        # gf.routing.route_bundle(component=self.component,
-        #                                    ports1=ports1[3:9],
-        #                                    ports2=ports2[3:9],
-        #                                    cross_section=my_route_e,
-        #                                    separation=10)
+            ports2.append(self.component[f"e_{i+1}_2"])
+            portsP.append(self.component[f"Pad_{i}"])
         new_ports=[]
-
         routes, ports = gf.routing.route_ports_to_side(component=self.component,
                                        ports=ports1[0:3],
                                        side="north",
                                        radius=0,
                                        cross_section=my_route_e,
-                                       separation=10)
+                                       separation=20+10)
+        
+        routes, portsn = gf.routing.route_ports_to_side(component=self.component,
+                                       ports=ports2[0:3],
+                                       side="south",
+                                       radius=0,
+                                       cross_section=my_route_e,
+                                       separation=20+15)
 
         new_ports.extend(ports[::-1])
         routes, ports = gf.routing.route_ports_to_side(component=self.component,
@@ -232,7 +235,13 @@ class MZI_sw:
                                        side="north",
                                        radius=0,
                                        cross_section=my_route_e,
-                                       separation=10)
+                                       separation=20+15)
+        routes, portsn = gf.routing.route_ports_to_side(component=self.component,
+                                       ports=ports2[3:6],
+                                       side="south",
+                                       radius=0,
+                                       cross_section=my_route_e,
+                                       separation=20+15)
         
         new_ports.extend(ports[::-1])
         routes, ports = gf.routing.route_ports_to_side(component=self.component,
@@ -240,16 +249,22 @@ class MZI_sw:
                                        side="north",
                                        radius=0,
                                        cross_section=my_route_e,
-                                       separation=10)
+                                       separation=20+15)
+        routes, portsn = gf.routing.route_ports_to_side(component=self.component,
+                                       ports=ports2[6:9],
+                                       side="south",
+                                       radius=0,
+                                       cross_section=my_route_e,
+                                       separation=20+10)
         
         
         new_ports.extend(ports[::-1])
         # print(new_ports)
         # print(ports1)
         gf.routing.route_bundle_electrical(component=self.component, 
-                                           ports1=new_ports, ports2=ports2,
+                                           ports1=new_ports, ports2=portsP,
                                            cross_section=my_route_e,
-                                           separation=15)
+                                           separation=20+15)
 
 master_component=gf.Component("Neuromorphic_Chip")
 MZI = MZI_sw(
